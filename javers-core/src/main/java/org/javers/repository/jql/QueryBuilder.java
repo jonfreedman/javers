@@ -377,4 +377,8 @@ public class QueryBuilder {
     public JqlQuery build(){
         return new JqlQuery(filter, queryParamsBuilder.build(), shadowScope);
     }
+
+    public static JqlQuery fromString(String query) {
+        return null;
+    }
 }
