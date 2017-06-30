@@ -26,20 +26,27 @@ class TypeFactory {
         this.classScanner = classScanner;
 
         //Pico doesn't support cycles, so manual construction
-        this.managedClassFactory = new ManagedClassFactory(classScanner, typeMapper);
+        this.managedClassFactory = new ManagedClassFactory(typeMapper);
 
         this.entityTypeFactory = new EntityTypeFactory(managedClassFactory);
     }
 
     JaversType create(ClientsClassDefinition def) {
+        return create(def, classScanner.scan(def.getBaseJavaClass()));
+    }
+
+    JaversType create(ClientsClassDefinition def, ClassScan scan) {
         if (def instanceof CustomDefinition) {
             return new CustomType(def.getBaseJavaClass());
         } else if (def instanceof EntityDefinition) {
-            return entityTypeFactory.createEntity((EntityDefinition) def);
+            return entityTypeFactory.createEntity((EntityDefinition) def, scan);
         } else if (def instanceof ValueObjectDefinition){
-            return createValueObject((ValueObjectDefinition) def);
+            return createValueObject((ValueObjectDefinition) def, scan);
         } else if (def instanceof ValueDefinition) {
-            return new ValueType(def.getBaseJavaClass());
+            ValueDefinition valueDefinition = (ValueDefinition) def;
+            return valueDefinition.getComparator()
+                    .map(comparator -> new ValueType(valueDefinition.getBaseJavaClass(), comparator))
+                    .orElse(new ValueType(valueDefinition.getBaseJavaClass()));
         } else if (def instanceof IgnoredTypeDefinition) {
             return new IgnoredType(def.getBaseJavaClass());
         } else {
@@ -47,8 +54,8 @@ class TypeFactory {
         }
     }
 
-    private ValueObjectType createValueObject(ValueObjectDefinition definition) {
-        return new ValueObjectType(managedClassFactory.create(definition), definition.getTypeName());
+    private ValueObjectType createValueObject(ValueObjectDefinition definition, ClassScan scan) {
+        return new ValueObjectType(managedClassFactory.create(definition, scan), definition.getTypeName());
     }
 
     JaversType infer(Type javaType, Optional<JaversType> prototype) {
@@ -81,7 +88,7 @@ class TypeFactory {
 
         if (prototype instanceof ManagedType) {
             ClassScan scan = classScanner.scan(javaClass);
-            ManagedClass managedClass = managedClassFactory.create(javaClass);
+            ManagedClass managedClass = managedClassFactory.create(javaClass, scan);
             return ((ManagedType) prototype).spawn(managedClass, scan.typeName());
         }
         else {
@@ -94,15 +101,15 @@ class TypeFactory {
         ClassScan scan = classScanner.scan(javaClass);
 
         if (scan.hasValueAnn()){
-            return create( new ValueDefinition(javaClass) );
+            return create( new ValueDefinition(javaClass), scan);
         }
 
         if (scan.hasIgnoredAnn()){
-            return create( new IgnoredTypeDefinition(javaClass) );
+            return create( new IgnoredTypeDefinition(javaClass), scan);
         }
 
         if (scan.hasValueObjectAnn()) {
-            return create(ValueObjectDefinitionBuilder.valueObjectDefinition(javaClass).build());
+            return create(ValueObjectDefinitionBuilder.valueObjectDefinition(javaClass).build(), scan);
         }
 
         ClientsClassDefinitionBuilder builder;
@@ -119,6 +126,6 @@ class TypeFactory {
             builder.withTypeName(scan.typeName().get());
         }
 
-        return create(builder.build());
+        return create(builder.build(), scan);
     }
 }
